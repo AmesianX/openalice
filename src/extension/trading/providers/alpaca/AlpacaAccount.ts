@@ -19,84 +19,17 @@ import type {
   Quote,
   MarketClock,
 } from '../../interfaces.js'
-
-export interface AlpacaAccountConfig {
-  id?: string
-  label?: string
-  apiKey: string
-  secretKey: string
-  paper: boolean
-}
-
-// ==================== Alpaca SDK raw shapes ====================
-
-interface AlpacaAccountRaw {
-  cash: string
-  portfolio_value: string
-  equity: string
-  buying_power: string
-  daytrade_count: number
-  daytrading_buying_power: string
-}
-
-interface AlpacaPositionRaw {
-  symbol: string
-  side: string
-  qty: string
-  avg_entry_price: string
-  current_price: string
-  market_value: string
-  unrealized_pl: string
-  unrealized_plpc: string
-  cost_basis: string
-}
-
-interface AlpacaOrderRaw {
-  id: string
-  symbol: string
-  side: string
-  type: string
-  qty: string | null
-  notional: string | null
-  limit_price: string | null
-  stop_price: string | null
-  time_in_force: string
-  extended_hours: boolean
-  status: string
-  filled_avg_price: string | null
-  filled_qty: string | null
-  filled_at: string | null
-  created_at: string
-  reject_reason: string | null
-}
-
-interface AlpacaSnapshotRaw {
-  LatestTrade: { Price: number; Timestamp: string }
-  LatestQuote: { BidPrice: number; AskPrice: number; Timestamp: string }
-  DailyBar: { Volume: number }
-}
-
-interface AlpacaFillActivityRaw {
-  activity_type: 'FILL'
-  symbol: string
-  side: string
-  qty: string
-  price: string
-  cum_qty: string
-  leaves_qty: string
-  transaction_time: string
-  order_id: string
-  type: string // 'fill' | 'partial_fill'
-}
-
-interface AlpacaClockRaw {
-  is_open: boolean
-  next_open: string
-  next_close: string
-  timestamp: string
-}
-
-// ==================== AlpacaAccount ====================
+import type {
+  AlpacaAccountConfig,
+  AlpacaAccountRaw,
+  AlpacaPositionRaw,
+  AlpacaOrderRaw,
+  AlpacaSnapshotRaw,
+  AlpacaFillActivityRaw,
+  AlpacaClockRaw,
+} from './alpaca-types.js'
+import { makeContract, resolveSymbol, mapAlpacaOrderStatus } from './alpaca-contracts.js'
+import { computeRealizedPnL } from './alpaca-pnl.js'
 
 export class AlpacaAccount implements ITradingAccount {
   readonly id: string
@@ -135,22 +68,22 @@ export class AlpacaAccount implements ITradingAccount {
     // Alpaca SDK has no explicit close
   }
 
-  // ---- Contract search (IBKR: reqMatchingSymbols + reqContractDetails) ----
+  // ---- Contract search ----
 
   async searchContracts(pattern: string): Promise<ContractDescription[]> {
     if (!pattern) return []
 
     // Alpaca tickers are unique for stocks — pattern is treated as exact ticker match
     const ticker = pattern.toUpperCase()
-    return [{ contract: this.makeContract(ticker) }]
+    return [{ contract: makeContract(ticker, this.provider) }]
   }
 
   async getContractDetails(query: Partial<Contract>): Promise<ContractDetails | null> {
-    const symbol = this.resolveSymbol(query as Contract)
+    const symbol = resolveSymbol(query as Contract, this.provider)
     if (!symbol) return null
 
     return {
-      contract: this.makeContract(symbol),
+      contract: makeContract(symbol, this.provider),
       validExchanges: ['SMART', 'NYSE', 'NASDAQ', 'ARCA'],
       orderTypes: ['market', 'limit', 'stop', 'stop_limit', 'trailing_stop'],
       stockType: 'COMMON',
@@ -160,7 +93,7 @@ export class AlpacaAccount implements ITradingAccount {
   // ---- Trading operations ----
 
   async placeOrder(order: OrderRequest): Promise<OrderResult> {
-    const symbol = this.resolveSymbol(order.contract)
+    const symbol = resolveSymbol(order.contract, this.provider)
     if (!symbol) {
       return { success: false, error: 'Cannot resolve contract to Alpaca symbol' }
     }
@@ -233,7 +166,7 @@ export class AlpacaAccount implements ITradingAccount {
   }
 
   async closePosition(contract: Contract, qty?: number): Promise<OrderResult> {
-    const symbol = this.resolveSymbol(contract)
+    const symbol = resolveSymbol(contract, this.provider)
     if (!symbol) {
       return { success: false, error: 'Cannot resolve contract to Alpaca symbol' }
     }
@@ -296,7 +229,7 @@ export class AlpacaAccount implements ITradingAccount {
     const raw = await this.client.getPositions() as AlpacaPositionRaw[]
 
     return raw.map(p => ({
-      contract: this.makeContract(p.symbol),
+      contract: makeContract(p.symbol, this.provider),
       side: p.side === 'long' ? 'long' as const : 'short' as const,
       qty: parseFloat(p.qty),
       avgEntryPrice: parseFloat(p.avg_entry_price),
@@ -324,13 +257,13 @@ export class AlpacaAccount implements ITradingAccount {
   }
 
   async getQuote(contract: Contract): Promise<Quote> {
-    const symbol = this.resolveSymbol(contract)
+    const symbol = resolveSymbol(contract, this.provider)
     if (!symbol) throw new Error('Cannot resolve contract to Alpaca symbol')
 
     const snapshot = await this.client.getSnapshot(symbol) as AlpacaSnapshotRaw
 
     return {
-      contract: this.makeContract(symbol),
+      contract: makeContract(symbol, this.provider),
       last: snapshot.LatestTrade.Price,
       bid: snapshot.LatestQuote.BidPrice,
       ask: snapshot.LatestQuote.AskPrice,
@@ -358,7 +291,7 @@ export class AlpacaAccount implements ITradingAccount {
     }
   }
 
-  // ==================== Realized PnL (FILL activities, FIFO) ====================
+  // ---- Realized PnL ----
 
   /**
    * Get realized PnL from Alpaca FILL activities with TTL cache.
@@ -373,7 +306,7 @@ export class AlpacaAccount implements ITradingAccount {
 
     try {
       const fills = await this.fetchAllFills()
-      const value = AlpacaAccount.computeRealizedPnL(fills)
+      const value = computeRealizedPnL(fills)
       this.realizedPnLCache = { value, updatedAt: now }
       return value
     } catch (err) {
@@ -410,102 +343,12 @@ export class AlpacaAccount implements ITradingAccount {
     return all
   }
 
-  /**
-   * FIFO lot matching: track buy lots per symbol, realize PnL on sells.
-   * Handles both long-only and short-selling (sell before buy → short lots).
-   */
-  static computeRealizedPnL(fills: AlpacaFillActivityRaw[]): number {
-    // Per-symbol FIFO queue: { qty, price }[]
-    // Positive qty = long lot, negative qty = short lot
-    const lots = new Map<string, Array<{ qty: number; price: number }>>()
-    let totalRealized = 0
-
-    for (const fill of fills) {
-      const symbol = fill.symbol
-      const price = parseFloat(fill.price)
-      const qty = parseFloat(fill.qty)
-      const isBuy = fill.side === 'buy'
-
-      if (!lots.has(symbol)) lots.set(symbol, [])
-      const queue = lots.get(symbol)!
-
-      // Determine if this fill opens or closes
-      // Opening: buy when no short lots (or queue empty), sell when no long lots
-      // Closing: buy against short lots, sell against long lots
-      let remaining = qty
-
-      while (remaining > 0 && queue.length > 0) {
-        const front = queue[0]
-        const isClosing = isBuy ? front.qty < 0 : front.qty > 0
-
-        if (!isClosing) break // Same direction → this fill opens new lots
-
-        const matchQty = Math.min(remaining, Math.abs(front.qty))
-
-        if (front.qty > 0) {
-          // Closing long: sell at `price`, entry was `front.price`
-          totalRealized += matchQty * (price - front.price)
-        } else {
-          // Closing short: buy at `price`, entry was `front.price`
-          totalRealized += matchQty * (front.price - price)
-        }
-
-        remaining -= matchQty
-        front.qty += isBuy ? matchQty : -matchQty // shrink lot toward 0
-
-        if (Math.abs(front.qty) < 1e-10) queue.shift() // lot fully consumed
-      }
-
-      // Remaining qty opens new lots
-      if (remaining > 0) {
-        queue.push({ qty: isBuy ? remaining : -remaining, price })
-      }
-    }
-
-    return Math.round(totalRealized * 100) / 100 // round to cents
-  }
-
-  // ==================== Internal ====================
-
-  /** Extract native symbol from aliceId, or null if not ours. */
-  private parseAliceId(aliceId: string): string | null {
-    const prefix = `${this.provider}-`
-    if (!aliceId.startsWith(prefix)) return null
-    return aliceId.slice(prefix.length)
-  }
-
-  /** Build a fully qualified Contract for an Alpaca ticker. */
-  private makeContract(ticker: string): Contract {
-    return {
-      aliceId: `${this.provider}-${ticker}`,
-      symbol: ticker,
-      secType: 'STK',
-      exchange: 'SMART',
-      currency: 'USD',
-    }
-  }
-
-  /**
-   * Resolve a Contract to an Alpaca ticker symbol.
-   * Accepts: aliceId, or symbol (+ optional secType check).
-   */
-  private resolveSymbol(contract: Contract): string | null {
-    if (contract.aliceId) {
-      return this.parseAliceId(contract.aliceId)
-    }
-    if (contract.symbol) {
-      // If secType is specified and not STK, not our domain
-      if (contract.secType && contract.secType !== 'STK') return null
-      return contract.symbol.toUpperCase()
-    }
-    return null
-  }
+  // ---- Internal ----
 
   private mapOrder(o: AlpacaOrderRaw): Order {
-    const symbol = o.symbol
     return {
       id: o.id,
-      contract: this.makeContract(symbol),
+      contract: makeContract(o.symbol, this.provider),
       side: o.side as 'buy' | 'sell',
       type: o.type as Order['type'],
       qty: parseFloat(o.qty ?? o.notional ?? '0'),
@@ -513,36 +356,12 @@ export class AlpacaAccount implements ITradingAccount {
       stopPrice: o.stop_price ? parseFloat(o.stop_price) : undefined,
       timeInForce: o.time_in_force as Order['timeInForce'],
       extendedHours: o.extended_hours,
-      status: this.mapOrderStatus(o.status),
+      status: mapAlpacaOrderStatus(o.status),
       filledPrice: o.filled_avg_price ? parseFloat(o.filled_avg_price) : undefined,
       filledQty: o.filled_qty ? parseFloat(o.filled_qty) : undefined,
       filledAt: o.filled_at ? new Date(o.filled_at) : undefined,
       createdAt: new Date(o.created_at),
       rejectReason: o.reject_reason ?? undefined,
-    }
-  }
-
-  private mapOrderStatus(alpacaStatus: string): Order['status'] {
-    switch (alpacaStatus) {
-      case 'filled':
-        return 'filled'
-      case 'new':
-      case 'accepted':
-      case 'pending_new':
-      case 'accepted_for_bidding':
-        return 'pending'
-      case 'canceled':
-      case 'expired':
-      case 'replaced':
-        return 'cancelled'
-      case 'partially_filled':
-        return 'partially_filled'
-      case 'done_for_day':
-      case 'suspended':
-      case 'rejected':
-        return 'rejected'
-      default:
-        return 'pending'
     }
   }
 }

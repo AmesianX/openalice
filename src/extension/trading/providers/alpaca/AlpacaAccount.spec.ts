@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { AlpacaAccount } from './AlpacaAccount.js'
+import { computeRealizedPnL } from './alpaca-pnl.js'
 
 /** Helper to build a fill activity record. */
 function fill(symbol: string, side: 'buy' | 'sell', qty: number, price: number, index = 0) {
@@ -17,9 +17,9 @@ function fill(symbol: string, side: 'buy' | 'sell', qty: number, price: number, 
   }
 }
 
-describe('AlpacaAccount.computeRealizedPnL', () => {
+describe('computeRealizedPnL', () => {
   it('returns 0 for empty fills', () => {
-    expect(AlpacaAccount.computeRealizedPnL([])).toBe(0)
+    expect(computeRealizedPnL([])).toBe(0)
   })
 
   it('returns 0 when only buys (no closes)', () => {
@@ -27,7 +27,7 @@ describe('AlpacaAccount.computeRealizedPnL', () => {
       fill('AAPL', 'buy', 10, 150, 0),
       fill('GOOG', 'buy', 5, 2800, 1),
     ]
-    expect(AlpacaAccount.computeRealizedPnL(fills)).toBe(0)
+    expect(computeRealizedPnL(fills)).toBe(0)
   })
 
   it('computes profit on simple buy then sell', () => {
@@ -36,7 +36,7 @@ describe('AlpacaAccount.computeRealizedPnL', () => {
       fill('AAPL', 'sell', 10, 160, 1),
     ]
     // (160 - 150) * 10 = 100
-    expect(AlpacaAccount.computeRealizedPnL(fills)).toBe(100)
+    expect(computeRealizedPnL(fills)).toBe(100)
   })
 
   it('computes loss on simple buy then sell', () => {
@@ -45,7 +45,7 @@ describe('AlpacaAccount.computeRealizedPnL', () => {
       fill('AAPL', 'sell', 10, 140, 1),
     ]
     // (140 - 150) * 10 = -100
-    expect(AlpacaAccount.computeRealizedPnL(fills)).toBe(-100)
+    expect(computeRealizedPnL(fills)).toBe(-100)
   })
 
   it('handles partial close (sell less than bought)', () => {
@@ -54,7 +54,7 @@ describe('AlpacaAccount.computeRealizedPnL', () => {
       fill('AAPL', 'sell', 4, 160, 1),
     ]
     // (160 - 150) * 4 = 40
-    expect(AlpacaAccount.computeRealizedPnL(fills)).toBe(40)
+    expect(computeRealizedPnL(fills)).toBe(40)
   })
 
   it('handles FIFO across multiple buy lots', () => {
@@ -66,7 +66,7 @@ describe('AlpacaAccount.computeRealizedPnL', () => {
     // FIFO: first lot 5@100 → (130-100)*5 = 150
     //        second lot 2@120 → (130-120)*2 = 20
     // total = 170
-    expect(AlpacaAccount.computeRealizedPnL(fills)).toBe(170)
+    expect(computeRealizedPnL(fills)).toBe(170)
   })
 
   it('handles multiple symbols independently', () => {
@@ -79,7 +79,7 @@ describe('AlpacaAccount.computeRealizedPnL', () => {
     // AAPL: (160-150)*10 = 100
     // GOOG: (2700-2800)*2 = -200
     // total = -100
-    expect(AlpacaAccount.computeRealizedPnL(fills)).toBe(-100)
+    expect(computeRealizedPnL(fills)).toBe(-100)
   })
 
   it('handles short selling (sell then buy)', () => {
@@ -88,7 +88,7 @@ describe('AlpacaAccount.computeRealizedPnL', () => {
       fill('AAPL', 'buy', 10, 150, 1),
     ]
     // Short: entry 160, exit 150 → (160-150)*10 = 100 profit
-    expect(AlpacaAccount.computeRealizedPnL(fills)).toBe(100)
+    expect(computeRealizedPnL(fills)).toBe(100)
   })
 
   it('handles short selling at a loss', () => {
@@ -97,7 +97,7 @@ describe('AlpacaAccount.computeRealizedPnL', () => {
       fill('AAPL', 'buy', 10, 160, 1),
     ]
     // Short: entry 150, exit 160 → (150-160)*10 = -100 loss
-    expect(AlpacaAccount.computeRealizedPnL(fills)).toBe(-100)
+    expect(computeRealizedPnL(fills)).toBe(-100)
   })
 
   it('handles multiple round trips', () => {
@@ -110,7 +110,7 @@ describe('AlpacaAccount.computeRealizedPnL', () => {
     // Trip 1: (110-100)*10 = 100
     // Trip 2: (115-105)*10 = 100
     // total = 200
-    expect(AlpacaAccount.computeRealizedPnL(fills)).toBe(200)
+    expect(computeRealizedPnL(fills)).toBe(200)
   })
 
   it('rounds to cents', () => {
@@ -119,6 +119,6 @@ describe('AlpacaAccount.computeRealizedPnL', () => {
       fill('AAPL', 'sell', 3, 10.667, 1),
     ]
     // (10.667 - 10.333) * 3 = 1.002
-    expect(AlpacaAccount.computeRealizedPnL(fills)).toBe(1)
+    expect(computeRealizedPnL(fills)).toBe(1)
   })
 })
