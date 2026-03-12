@@ -1,5 +1,5 @@
 import { useState, useMemo, useRef, useEffect, useCallback } from 'react'
-import type { ToolCall } from '../api'
+import type { ToolCall, StreamingToolCall } from '../api'
 import { Marked } from 'marked'
 import { markedHighlight } from 'marked-highlight'
 import hljs from 'highlight.js'
@@ -212,6 +212,34 @@ export function ToolCallGroup({ calls, timestamp }: ToolCallGroupProps) {
           {new Date(timestamp).toLocaleString()}
         </div>
       )}
+    </div>
+  )
+}
+
+// ==================== Streaming Tool Group ====================
+
+interface StreamingToolGroupProps {
+  tools: StreamingToolCall[]
+}
+
+export function StreamingToolGroup({ tools }: StreamingToolGroupProps) {
+  return (
+    <div className="flex flex-col items-start ml-8 gap-1">
+      {tools.map((tool) => (
+        <div
+          key={tool.id}
+          className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-bg-secondary/80 border border-border text-[12px] text-text-muted"
+        >
+          {tool.status === 'running' ? (
+            <span className="inline-block w-3 h-3 border-2 border-text-muted/30 border-t-text-muted rounded-full animate-spin" />
+          ) : (
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-green-500">
+              <polyline points="20 6 9 17 4 12" />
+            </svg>
+          )}
+          <span>{tool.name}</span>
+        </div>
+      ))}
     </div>
   )
 }

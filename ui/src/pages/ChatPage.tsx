@@ -1,8 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
-import { api, type ToolCall } from '../api'
+import { api, type ToolCall, type StreamingToolCall } from '../api'
 import type { ChannelListItem } from '../api/channels'
 import { useSSE } from '../hooks/useSSE'
-import { ChatMessage, ToolCallGroup, ThinkingIndicator } from '../components/ChatMessage'
+import { ChatMessage, ToolCallGroup, ThinkingIndicator, StreamingToolGroup } from '../components/ChatMessage'
 import { ChatInput } from '../components/ChatInput'
 import { ChannelConfigModal } from '../components/ChannelConfigModal'
 
@@ -22,6 +22,9 @@ export function ChatPage({ onSSEStatus }: ChatPageProps) {
   const [isWaiting, setIsWaiting] = useState(false)
   const [showScrollBtn, setShowScrollBtn] = useState(false)
   const [newMsgCount, setNewMsgCount] = useState(0)
+  const [streamText, setStreamText] = useState('')
+  const [streamTools, setStreamTools] = useState<StreamingToolCall[]>([])
+  const streamTextRef = useRef('')
 
   // Popover state
   const [popoverOpen, setPopoverOpen] = useState(false)
@@ -64,7 +67,7 @@ export function ChatPage({ onSSEStatus }: ChatPageProps) {
     }
   }, [])
 
-  useEffect(scrollToBottom, [messages, isWaiting, scrollToBottom])
+  useEffect(scrollToBottom, [messages, isWaiting, streamText, streamTools, scrollToBottom])
 
   // Detect user scroll
   useEffect(() => {
@@ -106,6 +109,25 @@ export function ChatPage({ onSSEStatus }: ChatPageProps) {
   useSSE({
     url: sseChannel ? `/api/chat/events?channel=${encodeURIComponent(sseChannel)}` : '/api/chat/events',
     onMessage: (data) => {
+      // Streaming events (tool_use / tool_result / text) during AI generation
+      if (data.type === 'stream' && data.event) {
+        const ev = data.event
+        if (ev.type === 'tool_use') {
+          setStreamTools((prev) => [...prev, {
+            id: ev.id, name: ev.name, input: ev.input, status: 'running',
+          }])
+        } else if (ev.type === 'tool_result') {
+          setStreamTools((prev) => prev.map((t) =>
+            t.id === ev.tool_use_id ? { ...t, status: 'done' as const, result: ev.content } : t,
+          ))
+        } else if (ev.type === 'text') {
+          streamTextRef.current += ev.text
+          setStreamText(streamTextRef.current)
+        }
+        return
+      }
+
+      // Push notifications (heartbeat, cron, etc.)
       if (data.type === 'message' && data.text) {
         const role = data.kind === 'message' ? 'assistant' : 'notification'
         setMessages((prev) => [
@@ -122,12 +144,22 @@ export function ChatPage({ onSSEStatus }: ChatPageProps) {
 
   // Send message
   const handleSend = useCallback(async (text: string) => {
+    // Clear streaming state from previous round
+    setStreamText('')
+    setStreamTools([])
+    streamTextRef.current = ''
+
     setMessages((prev) => [...prev, { kind: 'text', role: 'user', text, _id: nextId.current++ }])
     setIsWaiting(true)
 
     try {
       const channel = activeChannelRef.current === 'default' ? undefined : activeChannelRef.current
       const data = await api.chat.send(text, channel)
+
+      // POST returned — clear streaming state, use final result
+      setStreamText('')
+      setStreamTools([])
+      streamTextRef.current = ''
 
       if (data.text) {
         const media = data.media?.length ? data.media : undefined
@@ -137,6 +169,10 @@ export function ChatPage({ onSSEStatus }: ChatPageProps) {
         }
       }
     } catch (err) {
+      setStreamText('')
+      setStreamTools([])
+      streamTextRef.current = ''
+
       const msg = err instanceof Error ? err.message : 'Unknown error'
       setMessages((prev) => [
         ...prev,
@@ -385,7 +421,26 @@ export function ChatPage({ onSSEStatus }: ChatPageProps) {
           })}
           {isWaiting && (
             <div className={`${messages.length > 0 ? 'mt-5' : ''}`}>
-              <ThinkingIndicator />
+              {streamTools.length > 0 || streamText ? (
+                <>
+                  <div className="flex items-center gap-2 mb-1.5">
+                    <div className="w-6 h-6 rounded-full bg-accent/15 flex items-center justify-center text-accent shrink-0">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M12 2L15.09 8.26L22 9.27L17 14.14L18.18 21.02L12 17.77L5.82 21.02L7 14.14L2 9.27L8.91 8.26L12 2Z" />
+                      </svg>
+                    </div>
+                    <span className="text-[12px] text-text-muted font-medium">Alice</span>
+                  </div>
+                  {streamTools.length > 0 && <StreamingToolGroup tools={streamTools} />}
+                  {streamText && (
+                    <div className="mt-1">
+                      <ChatMessage role="assistant" text={streamText} isGrouped />
+                    </div>
+                  )}
+                </>
+              ) : (
+                <ThinkingIndicator />
+              )}
             </div>
           )}
         </div>

@@ -42,6 +42,14 @@ export interface ToolCall {
   result?: string
 }
 
+export interface StreamingToolCall {
+  id: string
+  name: string
+  input: unknown
+  status: 'running' | 'done'
+  result?: string
+}
+
 export type ChatHistoryItem =
   | { kind: 'text'; role: 'user' | 'assistant'; text: string; timestamp?: string; metadata?: Record<string, unknown>; media?: Array<{ type: string; url: string }> }
   | { kind: 'tool_calls'; calls: ToolCall[]; timestamp?: string }

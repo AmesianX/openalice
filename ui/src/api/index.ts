@@ -32,6 +32,7 @@ export type {
   ChatMessage,
   ChatResponse,
   ToolCall,
+  StreamingToolCall,
   ChatHistoryItem,
   AppConfig,
   AIProviderConfig,
