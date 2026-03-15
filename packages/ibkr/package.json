@@ -21,7 +21,7 @@
     "build": "tsup",
     "test": "vitest run --config vitest.config.ts",
     "test:e2e": "vitest run --config vitest.e2e.config.ts",
-    "test:watch": "vitest --config vitest.config.ts",
+    "test:all": "vitest run --config vitest.config.ts && vitest run --config vitest.e2e.config.ts",
     "typecheck": "tsc --noEmit",
     "generate:proto": "bash generate-proto.sh"
   },
