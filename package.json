@@ -12,6 +12,7 @@
     "build:backend": "tsup src/main.ts --format esm --dts",
     "start": "node dist/main.js",
     "test": "vitest run",
+    "test:e2e": "vitest run --config vitest.e2e.config.ts",
     "test:watch": "vitest"
   },
   "keywords": [
