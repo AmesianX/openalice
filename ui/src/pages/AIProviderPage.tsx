@@ -52,6 +52,13 @@ function detectCustomMode(provider: string, model: string): boolean {
 /** UI-level backend. 'openai' is a facade over vercel-ai-sdk with provider=openai. */
 type UIBackend = 'agent-sdk' | 'openai' | 'vercel-ai-sdk'
 
+/** Default provider/model per UI backend — applied on every switch to avoid stale config. */
+const BACKEND_DEFAULTS: Record<UIBackend, { backend: string; provider: string; model: string }> = {
+  'agent-sdk':    { backend: 'agent-sdk',    provider: 'anthropic', model: 'claude-sonnet-4-6' },
+  'openai':       { backend: 'vercel-ai-sdk', provider: 'openai',   model: PROVIDER_MODELS.openai[0].value },
+  'vercel-ai-sdk': { backend: 'vercel-ai-sdk', provider: 'anthropic', model: PROVIDER_MODELS.anthropic[0].value },
+}
+
 /** Derive initial UI backend from config. */
 function detectUIBackend(config: AIProviderConfig): UIBackend {
   if (config.backend === 'vercel-ai-sdk' && config.provider === 'openai') return 'openai'
@@ -97,37 +104,10 @@ export function AIProviderPage() {
     async (target: UIBackend) => {
       if (!config) return
       try {
-        if (target === 'openai') {
-          // Set backend to vercel-ai-sdk + provider to openai + default model
-          await api.config.setBackend('vercel-ai-sdk')
-          const defaultModel = PROVIDER_MODELS.openai[0].value
-          await api.config.updateSection('aiProvider', {
-            ...config.aiProvider,
-            backend: 'vercel-ai-sdk',
-            provider: 'openai',
-            model: defaultModel,
-          })
-          setConfig((c) => c ? { ...c, aiProvider: { ...c.aiProvider, backend: 'vercel-ai-sdk', provider: 'openai', model: defaultModel } } : c)
-        } else if (target === 'vercel-ai-sdk') {
-          await api.config.setBackend('vercel-ai-sdk')
-          // If coming from OpenAI facade, reset provider to anthropic so it doesn't keep showing as OpenAI
-          const needsProviderReset = config.aiProvider.provider === 'openai'
-          if (needsProviderReset) {
-            const defaultModel = PROVIDER_MODELS.anthropic[0].value
-            await api.config.updateSection('aiProvider', {
-              ...config.aiProvider,
-              backend: 'vercel-ai-sdk',
-              provider: 'anthropic',
-              model: defaultModel,
-            })
-            setConfig((c) => c ? { ...c, aiProvider: { ...c.aiProvider, backend: 'vercel-ai-sdk', provider: 'anthropic', model: defaultModel } } : c)
-          } else {
-            setConfig((c) => c ? { ...c, aiProvider: { ...c.aiProvider, backend: 'vercel-ai-sdk' } } : c)
-          }
-        } else {
-          await api.config.setBackend('agent-sdk')
-          setConfig((c) => c ? { ...c, aiProvider: { ...c.aiProvider, backend: 'agent-sdk' } } : c)
-        }
+        const defaults = BACKEND_DEFAULTS[target]
+        const updated = { ...config.aiProvider, ...defaults }
+        await api.config.updateSection('aiProvider', updated)
+        setConfig((c) => c ? { ...c, aiProvider: updated } : c)
       } catch {
         // Button state reflects actual saved state
       }
