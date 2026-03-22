@@ -21,9 +21,6 @@ export type {
   OpenOrder,
   AccountInfo,
   Quote,
-  FundingRate,
-  OrderBookLevel,
-  OrderBook,
   MarketClock,
   AccountCapabilities,
 } from './brokers/index.js'

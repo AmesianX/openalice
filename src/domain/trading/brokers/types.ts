@@ -74,9 +74,6 @@ export interface Position {
   marketValue: number
   unrealizedPnL: number
   realizedPnL: number
-  leverage?: number
-  margin?: number
-  liquidationPrice?: number
 }
 
 // ==================== Order result ====================
@@ -122,24 +119,6 @@ export interface Quote {
   volume: number
   high?: number
   low?: number
-  timestamp: Date
-}
-
-export interface FundingRate {
-  contract: Contract
-  fundingRate: number
-  nextFundingTime?: Date
-  previousFundingRate?: number
-  timestamp: Date
-}
-
-/** [price, amount] */
-export type OrderBookLevel = [price: number, amount: number]
-
-export interface OrderBook {
-  contract: Contract
-  bids: OrderBookLevel[]
-  asks: OrderBookLevel[]
   timestamp: Date
 }
 

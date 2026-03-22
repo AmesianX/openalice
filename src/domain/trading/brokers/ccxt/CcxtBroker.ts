@@ -20,12 +20,9 @@ import {
   type OpenOrder,
   type Quote,
   type MarketClock,
-  type FundingRate,
-  type OrderBook,
-  type OrderBookLevel,
 } from '../types.js'
 import '../../contract-ext.js'
-import type { CcxtBrokerConfig, CcxtMarket } from './ccxt-types.js'
+import type { CcxtBrokerConfig, CcxtMarket, FundingRate, OrderBook, OrderBookLevel } from './ccxt-types.js'
 import { MAX_INIT_RETRIES, INIT_RETRY_BASE_MS } from './ccxt-types.js'
 import {
   ccxtTypeToSecType,
@@ -431,9 +428,6 @@ export class CcxtBroker implements IBroker<CcxtBrokerMeta> {
           marketValue,
           unrealizedPnL,
           realizedPnL: parseFloat(String((p as unknown as Record<string, unknown>).realizedPnl ?? 0)),
-          leverage: parseFloat(String(p.leverage ?? 1)),
-          margin: parseFloat(String(p.initialMargin ?? p.collateral ?? 0)),
-          liquidationPrice: parseFloat(String(p.liquidationPrice ?? 0)) || undefined,
         })
       }
 

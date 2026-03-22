@@ -299,7 +299,6 @@ export class AlpacaBroker implements IBroker {
         marketValue: Math.abs(parseFloat(p.market_value)),
         unrealizedPnL: parseFloat(p.unrealized_pl),
         realizedPnL: 0,
-        leverage: 1,
       }))
     } catch (err) {
       throw BrokerError.from(err)

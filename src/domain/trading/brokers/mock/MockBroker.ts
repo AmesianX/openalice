@@ -92,7 +92,6 @@ export function makePosition(overrides: Partial<Position> = {}): Position {
     marketValue: 1600,
     unrealizedPnL: 100,
     realizedPnL: 0,
-    leverage: 1,
     ...overrides,
   }
 }

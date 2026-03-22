@@ -659,7 +659,6 @@ describe('CcxtBroker — getPositions', () => {
     expect(positions[0].side).toBe('long')
     expect(positions[0].avgCost).toBe(58000)
     expect(positions[0].marketPrice).toBe(60000)
-    expect(positions[0].leverage).toBe(5)
   })
 
   it('skips zero-size positions', async () => {

@@ -128,7 +128,6 @@ If this tool returns an error with transient=true, wait a few seconds and retry 
                 source: uta.id, symbol: pos.contract.symbol, side: pos.side,
                 quantity: pos.quantity.toNumber(), avgCost: pos.avgCost, marketPrice: pos.marketPrice,
                 marketValue: pos.marketValue, unrealizedPnL: pos.unrealizedPnL, realizedPnL: pos.realizedPnL,
-                leverage: pos.leverage, margin: pos.margin, liquidationPrice: pos.liquidationPrice,
                 percentageOfEquity: `${percentOfEquity.toFixed(1)}%`,
                 percentageOfPortfolio: `${percentOfPortfolio.toFixed(1)}%`,
               })

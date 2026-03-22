@@ -202,9 +202,6 @@ export interface Position {
   marketValue: number
   unrealizedPnL: number
   realizedPnL: number
-  leverage?: number
-  margin?: number
-  liquidationPrice?: number
 }
 
 export interface WalletCommitLog {
